@@ -1,0 +1,35 @@
+{
+ "initial": {
+  "p_raw": 2,
+  "p_robot_free": 1,
+  "p_machine_free": 1,
+  "p_inspection_free": 1
+ },
+ "completion": [
+  {
+   "p_completed": 1,
+   "p_raw": 1,
+   "p_robot_free": 1,
+   "p_machine_free": 1,
+   "p_inspection_free": 1
+  },
+  {
+   "p_completed": 2,
+   "p_robot_free": 1,
+   "p_machine_free": 1,
+   "p_inspection_free": 1
+  }
+ ],
+ "observable_alphabet": [
+  "inspection_pass",
+  "inspection_rework",
+  "load_done",
+  "machining_done",
+  "rework_returned",
+  "transfer_done",
+  "unload_done"
+ ],
+ "faults": [
+  "t_GripperSlipFault"
+ ]
+}

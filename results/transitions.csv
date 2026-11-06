@@ -1,0 +1,16 @@
+transition,label,observable,fault,earliest,latest,engineering_note
+t_StartLoading,,no,no,1,2,robot to pick-up
+t_FinishLoading,load_done,yes,no,2,3,placement at machine
+t_GripperSlipFault,,no,yes,0,1,unobservable gripper slip
+t_RecoverLoading,,no,no,3,5,re-grip and recover
+t_StartProcessing,,no,no,0,1,clamp
+t_FinishProcessing,machining_done,yes,no,8,12,machining
+t_StartTransfer,,no,no,1,2,robot to machine exit
+t_FinishTransfer,transfer_done,yes,no,2,3,place at inspection
+t_StartInspection,,no,no,0,1,fixture
+t_InspectionPass,inspection_pass,yes,no,4,6,inspection passed
+t_InspectionRework,inspection_rework,yes,no,4,6,inspection failed
+t_StartReworkTransfer,,no,no,1,2,robot to rework
+t_FinishReworkTransfer,rework_returned,yes,no,2,3,return to machine
+t_StartUnloading,,no,no,1,2,robot to exit
+t_FinishUnloading,unload_done,yes,no,2,3,unload done

@@ -1,0 +1,4 @@
+purpose,run_id,status,notes
+initial validation,42227340643,success,5 deadlocks found (robot token lost on gripper slip)
+post-fix validation,42227735951,success,0 deadlocks / 0 invariant violations; verifier INC at SCG cap
+bounds sweep,42228311326,success,48 configs L=3..6 H=24..48 all INC (cap 50001)

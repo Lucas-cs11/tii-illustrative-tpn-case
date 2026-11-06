@@ -1,0 +1,18 @@
+place,initial_tokens,role
+p_raw,2,job pool
+p_loading,0,job state
+p_wait_machine,0,job state
+p_processing,0,job state
+p_wait_transfer,0,job state
+p_transferring,0,job state
+p_wait_inspection,0,job state
+p_inspecting,0,job state
+p_rework_queue,0,job state
+p_rework_transfer,0,job state
+p_wait_unload,0,job state
+p_unloading,0,job state
+p_completed,0,completion sink
+p_grip_recovery,0,job state
+p_robot_free,1,robot resource
+p_machine_free,1,machine resource
+p_inspection_free,1,inspection resource
