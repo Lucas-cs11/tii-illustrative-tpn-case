@@ -45,6 +45,7 @@ ARCS = [
     ("p_loading", "t_FinishLoading", 1),
     ("t_FinishLoading", "p_wait_machine", 1), ("t_FinishLoading", "p_robot_free", 1),
     ("p_loading", "t_GripperSlipFault", 1), ("t_GripperSlipFault", "p_grip_recovery", 1),
+    ("t_GripperSlipFault", "p_robot_free", 1),  # robot released when the gripper slips
     ("p_grip_recovery", "t_RecoverLoading", 1), ("p_robot_free", "t_RecoverLoading", 1),
     ("t_RecoverLoading", "p_loading", 1),
     ("p_wait_machine", "t_StartProcessing", 1), ("p_machine_free", "t_StartProcessing", 1),
