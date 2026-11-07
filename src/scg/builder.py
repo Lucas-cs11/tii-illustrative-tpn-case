@@ -272,6 +272,29 @@ def _compute_successor(tpn: TPN, cls: StateClass, t_name: str) -> Optional[State
 
     t_obj = tpn.transitions[t_name]
 
+    # --- strong-time urgency intersection (fix) ---------------------------------
+    # Firing t at a point where its age is x_t is legal only if
+    #   earliest(t) <= x_t <= latest(t)                      (t may fire)
+    #   x_w - x_t <= latest(w) - earliest(t)  for every w in E, w != t   (urgency)
+    # Without these constraints the shift below accepts successors that the
+    # strong-time semantics forbids (see results/scg_root_cause.md).
+    z = DBM(cls.dbm.variables)
+    for i in cls.dbm.variables:
+        for j in cls.dbm.variables:
+            z.set(i, j, cls.dbm.get(i, j))
+    z.set(t_name, "0", t_obj.interval.latest)
+    z.set("0", t_name, -t_obj.interval.earliest)
+    for w in cls.enabled:
+        if w == t_name:
+            continue
+        lw = tpn.transitions[w].interval.latest
+        if not math.isinf(lw):
+            z.set(w, t_name, lw - t_obj.interval.earliest)
+    z = z.normalize()
+    if z.is_empty():
+        return None
+    # ---------------------------------------------------------------------------
+
     # No explicit feasibility pre-check: the successor zone computation and
     # normalization naturally yield an empty zone if the firing is infeasible
     # under strong-time semantics. The DBM cross-differences (set by _build_initial_class
@@ -303,8 +326,8 @@ def _compute_successor(tpn: TPN, cls: StateClass, t_name: str) -> Optional[State
     for u in persistent:
         # Check u is actually in old DBM
         if u in cls.dbm.variables:
-            dbm_u_t = cls.dbm.get(u, t_name)
-            dbm_t_u = cls.dbm.get(t_name, u)
+            dbm_u_t = z.get(u, t_name)
+            dbm_t_u = z.get(t_name, u)
             new_dbm.set(u, "0", dbm_u_t)
             new_dbm.set("0", u, dbm_t_u)
 
@@ -312,7 +335,7 @@ def _compute_successor(tpn: TPN, cls: StateClass, t_name: str) -> Optional[State
     for u1 in persistent:
         for u2 in persistent:
             if u1 != u2 and u1 in cls.dbm.variables and u2 in cls.dbm.variables:
-                new_dbm.set(u1, u2, cls.dbm.get(u1, u2))
+                new_dbm.set(u1, u2, z.get(u1, u2))
 
     # Newly enabled: x_v = 0 relative to new reference
     # So in [earliest(v), latest(v)] relative to new reference
@@ -324,7 +347,7 @@ def _compute_successor(tpn: TPN, cls: StateClass, t_name: str) -> Optional[State
     # Cross terms: persistent u, newly enabled v
     for u in persistent:
         for v in newly:
-            if u in cls.dbm.variables:
+            if u in z.variables:
                 t_v = tpn.transitions[v]
                 # x_u^new - x_v^new: x_v^new in [earliest(v), latest(v)] => -x_v^new in [-latest(v), -earliest(v)]
                 # DBM[u][v] = upper bound on x_u - x_v
