@@ -39,36 +39,41 @@ class State:
         self.marking = dict(marking); self.clocks = dict(clocks); self.fired = tuple(fired)
 
 
-def strong_time_search(tpn, accept, max_time=Fraction(400), max_depth=60):
-    """Depth-first search over the strong-time state space. Returns a witness path or None."""
+def strong_time_search(tpn, accept, max_time=240, max_depth=40, grid=(0, 0.5, 1, 2)):
+    """Strong-time traversal with a coarse waiting grid.
+
+    Every enabled transition carries its elapsed time. A step either waits by one of the
+    grid values (clipped so that no enabled transition passes its latest firing time) and
+    then fires one enabled transition. The traversal is breadth-first with a node budget,
+    which is enough to prove *feasibility witnesses* (the claim here) but is not a
+    complete decision procedure for infeasibility.
+    """
     pre, post = pre_post(tpn)
     init = dict(tpn.initial_marking)
-    start = State(init, {t: Fraction(0) for t in enabled(tpn, pre, init)}, [])
-    stack = [(start, [])]
-    visited = set()
-    while stack:
-        st, path = stack.pop()
+    en0 = enabled(tpn, pre, init)
+    start = State(init, {t: Fraction(0) for t in en0}, [])
+    from collections import deque
+    q = deque([(start, [])])
+    seen = set()
+    budget = 400000
+    while q and budget > 0:
+        st, path = q.popleft(); budget -= 1
         if accept(st.marking, st.fired):
             return path, st.marking
         if len(path) >= max_depth:
             continue
-        key = (tuple(sorted(st.marking.items())),
-               tuple(sorted((t, str(v)) for t, v in st.clocks.items())), st.fired)
-        if key in visited:
-            continue
-        visited.add(key)
         en = list(st.clocks)
         if not en:
             continue
-        max_wait = min(tpn.transitions[t].interval.latest - st.clocks[t] for t in en)
-        if max_wait < 0:
+        slack = min(tpn.transitions[t].interval.latest - st.clocks[t] for t in en)
+        if slack < 0:
             continue
-        deltas = {Fraction(0), max_wait}
-        for t in en:
-            d = tpn.transitions[t].interval.earliest - st.clocks[t]
-            if 0 <= d <= max_wait:
-                deltas.add(d)
-        for delta in sorted(deltas):
+        waits = {Fraction(0), slack}
+        for g in grid:
+            g = Fraction(g).limit_denominator(10)
+            if g <= slack:
+                waits.add(g)
+        for delta in sorted(waits):
             clocks = {t: st.clocks[t] + delta for t in en}
             for t in en:
                 if not (tpn.transitions[t].interval.earliest <= clocks[t]
@@ -84,8 +89,13 @@ def strong_time_search(tpn, accept, max_time=Fraction(400), max_depth=60):
                 still = enabled(tpn, pre, nm)
                 nc = {}
                 for u in still:
-                    nc[u] = clocks.get(u, Fraction(0)) if (u in clocks and u != t) else Fraction(0)
-                stack.append((State(nm, nc, list(st.fired) + [t]), path + [(t, delta)]))
+                    nc[u] = clocks[u] if (u in clocks and u != t) else Fraction(0) if u not in clocks else Fraction(0)
+                fired = tuple(sorted(st.fired + (t,)))
+                key = (tuple(sorted(nm.items())), fired)
+                if key in seen:
+                    continue
+                seen.add(key)
+                q.append((State(nm, nc, list(fired)), path + [(t, delta)]))
     return None
 
 
