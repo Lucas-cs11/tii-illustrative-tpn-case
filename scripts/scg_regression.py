@@ -56,6 +56,7 @@ def main() -> int:
                                     "pass": c["classes"] >= 2}
     except Exception as exc:  # noqa: BLE001
         r["C_persistent_clocks"] = {"error": f"{type(exc).__name__}: {exc}", "pass": False}
+        print("C raised:", exc)
     # E/F: industrial model witnesses still reachable after the fix
     tpn = build()
     normal = strong_time_search(tpn, lambda m, f: m.get("p_completed", 0) == 2
@@ -77,6 +78,13 @@ def main() -> int:
     (ROOT / "results").mkdir(exist_ok=True)
     (ROOT / "results" / "scg_regression.json").write_text(json.dumps(r, indent=1, default=str))
     print(json.dumps(r, indent=1, default=str)[:2500])
+    required = ["A_urgent_conflict", "B_valid_conflict", "C_persistent_clocks",
+                "E_recovery", "F_completion"]
+    failed = [k for k in required if not r.get(k, {}).get("pass")]
+    if failed:
+        print("REGRESSION FAILURE:", ", ".join(failed))
+        return 1
+    print("all required regression tests passed")
     return 0
 
 

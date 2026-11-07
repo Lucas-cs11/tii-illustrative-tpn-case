@@ -236,245 +236,71 @@ def _build_initial_class(tpn: TPN) -> StateClass:
 
 
 def _compute_successor(tpn: TPN, cls: StateClass, t_name: str) -> Optional[StateClass]:
-    """Compute successor state class after firing t_name from cls.
+    """Successor state class in the firing-domain representation.
 
-    Returns None if t_name is not enabled or the resulting zone is empty.
-
-    Algorithm (Berthomieu & Menasche 1983):
-    1. Check t_name is enabled at cls.marking.
-    2. Check firing feasibility: DBM constraint for t_name implies a valid time
-       (earliest(t) - clock(t) >= 0, considering urgency of all others).
-    3. Compute new marking M'.
-    4. Compute new enabled set E(M').
-    5. Build new DBM:
-       - For t_name, it's the fired transition. After firing, time 0 is
-         redefined as the moment of firing.
-       - Let d = delay before firing. After firing, new reference is at firing time.
-       - For persistent u (enabled before AND after, u != t if t re-enables itself):
-           x_u' = x_u - x_t  (age relative to firing moment)
-           DBM'[u][0] = DBM[u][t]  (shifted)
-           DBM'[0][u] = DBM[t][u]
-       - For newly enabled v:
-           x_v' = 0 (freshly enabled)
-           DBM'[v][0] = latest(v)
-           DBM'[0][v] = -earliest(v)
-       Cross terms between persistent u1 and u2:
-           DBM'[u1][u2] = DBM[u1][u2]  (unchanged relative difference)
-       Cross terms persistent u, newly enabled v:
-           DBM'[u][v] = DBM[u][t] + latest(v) ... computed via normalization
-    6. Apply urgency: for each transition w enabled after, constrain by
-       its latest firing window (prevent w from exceeding its latest after delay d).
-       Actually urgency is already encoded in the DBM structure.
-    7. Normalize.
+    Variable theta_t of a class is the remaining time until t fires, constrained to
+    [earliest(t), latest(t)].  Firing t first is legal iff theta_t <= theta_u for every
+    other enabled u (strong time: no other enabled transition may be forced past its
+    deadline before t fires).  After firing, persistent transitions keep their remaining
+    time shifted by theta_t, newly enabled transitions get a fresh interval, and the
+    fired variable is projected out.
     """
     if t_name not in cls.enabled:
         return None
-
     t_obj = tpn.transitions[t_name]
 
-    # --- strong-time urgency intersection (fix) ---------------------------------
-    # Firing t at a point where its age is x_t is legal only if
-    #   earliest(t) <= x_t <= latest(t)                      (t may fire)
-    #   x_w - x_t <= latest(w) - earliest(t)  for every w in E, w != t   (urgency)
-    # Without these constraints the shift below accepts successors that the
-    # strong-time semantics forbids (see results/scg_root_cause.md).
+    # ---- 1. firing-domain constraints, intersected with tighten semantics ----
     z = DBM(cls.dbm.variables)
     for i in cls.dbm.variables:
         for j in cls.dbm.variables:
             z.set(i, j, cls.dbm.get(i, j))
-    z.set(t_name, "0", t_obj.interval.latest)
-    z.set("0", t_name, -t_obj.interval.earliest)
-    for w in cls.enabled:
-        if w == t_name:
+
+    def tighten(i: str, j: str, bound):
+        old = z.get(i, j)
+        z.set(i, j, bound if _leq(bound, old) else old)
+
+    for u in cls.enabled:
+        if u == t_name:
             continue
-        lw = tpn.transitions[w].interval.latest
-        if not math.isinf(lw):
-            z.set(w, t_name, lw - t_obj.interval.earliest)
+        tighten(t_name, u, Fraction(0))          # theta_t - theta_u <= 0
     z = z.normalize()
     if z.is_empty():
         return None
-    # ---------------------------------------------------------------------------
 
-    # No explicit feasibility pre-check: the successor zone computation and
-    # normalization naturally yield an empty zone if the firing is infeasible
-    # under strong-time semantics. The DBM cross-differences (set by _build_initial_class
-    # and propagated by the shift) encode urgency constraints. After normalization,
-    # normalized.is_empty() correctly rejects infeasible successors.
-
-    # Compute new marking
+    # ---- 2. new marking and enabled sets ----
     new_marking = tpn.fire(cls.marking, t_name)
-
-    # Compute persistent and newly enabled sets
-    before_set = cls.enabled  # enabled at current marking
     after_set = frozenset(tpn.enabled_set(new_marking))
+    persistent = frozenset(u for u in after_set if u in cls.enabled and u != t_name)
+    newly = frozenset(u for u in after_set if u not in cls.enabled)
 
-    # Persistent: enabled before and after, EXCLUDING t if it re-enables itself
-    persistent = tpn.persistent_enabled(cls.marking, t_name)
-    newly = tpn.newly_enabled(cls.marking, t_name)
-
-    # Variables in new DBM: {0} | after_set
+    # ---- 3. shifted DBM with projection of theta_t ----
     new_variables = frozenset({"0"} | after_set)
-    new_dbm = DBM(new_variables)
-
-    # Shift: after firing t at time x_t (from old reference 0),
-    # new reference 0' is at the firing moment.
-    # For persistent u: x_u^new = x_u^old - x_t^old
-    #   => x_u^new - 0^new = x_u^old - x_t^old
-    #   => DBM^new[u][0] = DBM^old[u][t]  (upper bound on x_u - x_t)
-    #   => DBM^new[0][u] = DBM^old[t][u]  (upper bound on x_t - x_u = -(x_u - x_t))
-
+    nd = DBM(new_variables)
     for u in persistent:
-        # Check u is actually in old DBM
-        if u in cls.dbm.variables:
-            dbm_u_t = z.get(u, t_name)
-            dbm_t_u = z.get(t_name, u)
-            new_dbm.set(u, "0", dbm_u_t)
-            new_dbm.set("0", u, dbm_t_u)
-
-    # Cross terms between two persistent transitions
+        nd.set(u, "0", z.get(u, t_name))         # theta_u - theta_t <= ...
+        nd.set("0", u, z.get(t_name, u))
     for u1 in persistent:
         for u2 in persistent:
-            if u1 != u2 and u1 in cls.dbm.variables and u2 in cls.dbm.variables:
-                new_dbm.set(u1, u2, z.get(u1, u2))
-
-    # Newly enabled: x_v = 0 relative to new reference
-    # So in [earliest(v), latest(v)] relative to new reference
+            if u1 != u2:
+                nd.set(u1, u2, z.get(u1, u2))
     for v in newly:
-        t_v = tpn.transitions[v]
-        new_dbm.set(v, "0", t_v.interval.latest)  # x_v <= latest(v)
-        new_dbm.set("0", v, -t_v.interval.earliest)  # x_v >= earliest(v)
-
-    # Cross terms: persistent u, newly enabled v
+        tv = tpn.transitions[v]
+        nd.set(v, "0", tv.interval.latest)
+        nd.set("0", v, -tv.interval.earliest)
     for u in persistent:
         for v in newly:
-            if u in z.variables:
-                t_v = tpn.transitions[v]
-                # x_u^new - x_v^new: x_v^new in [earliest(v), latest(v)] => -x_v^new in [-latest(v), -earliest(v)]
-                # DBM[u][v] = upper bound on x_u - x_v
-                # x_u <= DBM[u][0] (old, in new coords) => x_u^new - x_v^new <= DBM^new[u][0] - (-DBM[0][v])
-                # i.e., = DBM^new[u][0] + latest(v)
-                ub_u_new = cls.dbm.get(u, t_name)  # = DBM^new[u][0]
-                new_dbm.set(u, v, _add(ub_u_new, t_v.interval.latest))
-                # DBM[v][u] = upper bound on x_v - x_u
-                # x_v <= latest(v) and x_u >= DBM^new[0][u] (but negated)
-                # DBM[0][u] in new coords = DBM[t][u] in old
-                lb_u_new = cls.dbm.get(t_name, u)  # upper bound on x_t - x_u => -x_u <= lb_u_new => x_u >= -lb_u_new
-                new_dbm.set(v, u, _add(t_v.interval.latest, lb_u_new))
-
-    # Cross terms: newly enabled v1, newly enabled v2
-    for v1 in newly:
-        for v2 in newly:
-            if v1 != v2:
-                t_v1 = tpn.transitions[v1]
-                t_v2 = tpn.transitions[v2]
-                # x_v1 - x_v2 <= latest(v1) - earliest(v2)
-                new_dbm.set(v1, v2, _add(t_v1.interval.latest, -t_v2.interval.earliest))
-
-    # Now apply urgency constraint for the fired transition t itself
-    # In the new coordinates, x_t was consumed. But we need to constrain:
-    # The delay d = x_t^old - 0 must satisfy d >= 0 (already ensured by DBM[t][0] from old zone)
-    # and d >= earliest(t) - current_age(t) which is:
-    # x_t^old >= earliest(t) i.e., DBM[0][t] <= -earliest(t) in old coords
-    # This must already be in cls.dbm.
-    # The shift to new coords handles this: DBM^new[0][u] = DBM^old[t][u] which includes
-    # the constraint that u's age relative to firing point is correct.
-
-    # Urgency constraint: the fired transition must fire within its window.
-    # This is encoded by cls.dbm[t][0] <= latest(t) and cls.dbm[0][t] <= -earliest(t).
-    # After shifting, these constraints propagate correctly.
-
-    # Additional urgency: in old zone, firing t at time x_t requires
-    # that all other enabled transitions u have x_u + (x_t - x_u_now) <= latest(u)
-    # i.e., x_t <= latest(u) + (x_u_now - 0) i.e., x_t - x_u <= latest(u) ... Hmm.
-    # Actually strong-time urgency says: d <= latest(u) - x_u for all u with finite latest.
-    # Expressed in old zone: for each enabled u with finite latest:
-    #   DBM[t][0] must satisfy: x_t - 0 <= min_u(latest(u) + DBM[0][u])
-    # But this is just the constraint that the firing delay d = x_t is within
-    # the urgency window, which should already be enforced by the zone.
-    # The standard SCG construction includes an urgency constraint:
-    #   For each enabled u with finite latest: x_t <= latest(u) - (x_u - x_t) ... no.
-    # Let me use the standard Berthomieu construction more carefully.
-
-    # Standard approach: add urgency constraints to new_dbm
-    # After the shift, for each persistently enabled u with finite latest(u):
-    # The new age x_u^new must satisfy x_u^new <= latest(u) (absolute constraint)
-    # which is already in new_dbm.set(u, "0", DBM[u][t]).
-    # But also: x_u^new >= 0 (non-negative age) is implied by new_dbm.set("0", u, DBM[t][u]).
-    # For newly enabled v: x_v^new in [0, latest(v)], also encoded.
-    # Urgency for the step: no other transition should have been able to force t to fire earlier.
-    # This is captured by: for each enabled u with finite latest, after the shift:
-    #   x_u^new <= latest(u) is enforced by DBM^new[u][0].
-    # This IS the urgency constraint in the shifted zone.
-
-    # Normalize
-    normalized = new_dbm.normalize()
-
-    if normalized.is_empty():
+            tv = tpn.transitions[v]
+            nd.set(u, v, z.get(u, t_name) - tv.interval.earliest)
+            nd.set(v, u, tv.interval.latest + z.get(t_name, u))
+    nd = nd.normalize()
+    if nd.is_empty():
         return None
-
-    marking_key = _marking_to_key(new_marking)
     return StateClass(
-        marking_key=marking_key,
+        marking_key=frozenset((p, c) for p, c in new_marking.items() if c > 0),
         marking=new_marking,
-        dbm=normalized,
+        dbm=nd,
         enabled=after_set,
     )
-
-
-class SCG:
-    """State Class Graph.
-
-    classes: dict[id -> StateClass]
-    edges: list[(from_id, transition_name, to_id)]
-    initial_id: int
-    completion_ids: frozenset[int]
-    """
-
-    def __init__(self):
-        self.classes: Dict[int, StateClass] = {}
-        self.edges: List[Tuple[int, str, int]] = []
-        self.initial_id: int = 0
-        self.completion_ids: FrozenSet[int] = frozenset()
-        self._class_to_id: Dict[StateClass, int] = {}
-        self._next_id: int = 0
-        self.has_zero_time_unobservable_cycle: bool = False
-        self.scg_state_limit_reached: bool = False
-
-    def _get_or_add_class(self, cls: StateClass) -> Tuple[int, bool]:
-        """Return (id, is_new). is_new=True if newly added."""
-        if cls in self._class_to_id:
-            return self._class_to_id[cls], False
-        cid = self._next_id
-        self._next_id += 1
-        self.classes[cid] = cls
-        self._class_to_id[cls] = cid
-        return cid, True
-
-    def build_truncated(self) -> "SCG":
-        """Return completion-truncated SCG: same classes/edges but with all
-        outgoing edges from completion classes removed."""
-        truncated = SCG()
-        truncated.classes = dict(self.classes)
-        truncated.initial_id = self.initial_id
-        truncated.completion_ids = self.completion_ids
-        truncated._class_to_id = dict(self._class_to_id)
-        truncated._next_id = self._next_id
-        # Only include edges whose source is NOT a completion class
-        truncated.edges = [
-            (src, t, dst)
-            for (src, t, dst) in self.edges
-            if src not in self.completion_ids
-        ]
-        return truncated
-
-    def successors(self, class_id: int) -> List[Tuple[str, int]]:
-        """Return list of (transition_name, successor_id) from class_id."""
-        return [(t, dst) for (src, t, dst) in self.edges if src == class_id]
-
-    def predecessors(self, class_id: int) -> List[Tuple[int, str]]:
-        """Return list of (predecessor_id, transition_name) to class_id."""
-        return [(src, t) for (src, t, dst) in self.edges if dst == class_id]
-
 
 def _transition_has_zero_time(tpn: TPN, t_name: str) -> bool:
     """Return True if transition t_name has a zero upper bound (can fire at time 0)."""
