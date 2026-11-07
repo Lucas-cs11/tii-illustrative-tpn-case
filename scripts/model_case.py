@@ -24,7 +24,7 @@ PLACES = ["p_raw", "p_loading", "p_wait_machine", "p_processing", "p_wait_transf
 TRANSITIONS = {
     "t_StartLoading":       ("", False, (1, 2)),
     "t_FinishLoading":      ("load_done", False, (2, 3)),
-    "t_GripperSlipFault":   ("", True, (0, 1)),
+    "t_GripperSlipFault":   ("", True, (1, 3)),
     "t_RecoverLoading":     ("", False, (3, 5)),
     "t_StartProcessing":    ("", False, (0, 1)),
     "t_FinishProcessing":   ("machining_done", False, (8, 12)),
