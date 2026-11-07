@@ -1,0 +1,35 @@
+{
+ "A_urgent_conflict": {
+  "scg_successor_via_normal": 1,
+  "expected": 0,
+  "pass": false,
+  "classes": 3,
+  "edges": 2
+ },
+ "B_valid_conflict": {
+  "normal_successors": 1,
+  "fault_successors": 1,
+  "pass": true,
+  "classes": 3,
+  "edges": 2
+ },
+ "C_persistent_clocks": {
+  "classes": 3,
+  "edges": 3,
+  "pass": true
+ },
+ "E_recovery": {
+  "fault_completion": true,
+  "pass": true
+ },
+ "F_completion": {
+  "normal_completion": true,
+  "partial_reachable": true,
+  "pass": true,
+  "normal_observables": 10
+ },
+ "industrial_scg": {
+  "classes": 50001,
+  "edges": 57072
+ }
+}
