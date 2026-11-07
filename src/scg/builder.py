@@ -180,8 +180,65 @@ class StateClass:
         return hash((self.marking_key, self.dbm))
 
 
+@dataclass
+class SCG:
+    """Normalized state-class graph.
+
+    classes: id -> StateClass
+    edges:   list of (source class id, transition name, target class id)
+    Completion classes are stored but not expanded (first-entry completion).
+    """
+
+    classes: Dict[int, StateClass] = field(default_factory=dict)
+    edges: List[Tuple[int, str, int]] = field(default_factory=list)
+    initial_id: int = -1
+    completion_ids: FrozenSet[int] = frozenset()
+    scg_state_limit_reached: bool = False
+    has_zero_time_unobservable_cycle: bool = False
+    _index: Dict[StateClass, int] = field(default_factory=dict, repr=False)
+
+    def _get_or_add_class(self, cls: StateClass) -> Tuple[int, bool]:
+        existing = self._index.get(cls)
+        if existing is not None:
+            return existing, False
+        cid = len(self.classes)
+        self.classes[cid] = cls
+        self._index[cls] = cid
+        return cid, True
+
+    @property
+    def class_count(self) -> int:
+        return len(self.classes)
+
+    def __len__(self) -> int:
+        return len(self.classes)
+
+    def successors(self, class_id: int) -> List[Tuple[str, int]]:
+        """Return the list of (transition, successor class id) edges."""
+        return [(t, dst) for (src, t, dst) in self.edges if src == class_id]
+
+    def build_truncated(self) -> "SCG":
+        """Completion-truncated SCG: completion classes are kept as leaves.
+
+        ``build_scg`` already avoids expanding completion classes; this method
+        returns an explicit copy with any edge leaving a completion class
+        removed, so downstream consumers can rely on the first-entry rule even
+        if the graph is later extended.
+        """
+        trunc = SCG()
+        trunc.classes = dict(self.classes)
+        trunc._index = dict(self._index)
+        trunc.initial_id = self.initial_id
+        trunc.completion_ids = frozenset(self.completion_ids)
+        trunc.scg_state_limit_reached = self.scg_state_limit_reached
+        trunc.has_zero_time_unobservable_cycle = self.has_zero_time_unobservable_cycle
+        trunc.edges = [(src, t, dst) for (src, t, dst) in self.edges
+                       if src not in self.completion_ids]
+        return trunc
+
+
 def _marking_to_key(marking: Dict[str, int]) -> FrozenSet[Tuple[str, int]]:
-    return frozenset(marking.items())
+    return frozenset((p, c) for p, c in marking.items() if c > 0)
 
 
 def _build_initial_class(tpn: TPN) -> StateClass:
@@ -270,8 +327,12 @@ def _compute_successor(tpn: TPN, cls: StateClass, t_name: str) -> Optional[State
     # ---- 2. new marking and enabled sets ----
     new_marking = tpn.fire(cls.marking, t_name)
     after_set = frozenset(tpn.enabled_set(new_marking))
+    # A transition that fires always restarts its clock: if it is still
+    # enabled after firing it belongs to the newly-enabled set, not to the
+    # persistent set.  (This is the convention required for Wang Example 4.1,
+    # see reports/wang_reproduction.md.)
     persistent = frozenset(u for u in after_set if u in cls.enabled and u != t_name)
-    newly = frozenset(u for u in after_set if u not in cls.enabled)
+    newly = frozenset(u for u in after_set if u not in cls.enabled or u == t_name)
 
     # ---- 3. shifted DBM with projection of theta_t ----
     new_variables = frozenset({"0"} | after_set)
