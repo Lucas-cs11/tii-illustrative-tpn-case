@@ -1,10 +1,10 @@
 {
  "A_urgent_conflict": {
-  "scg_successor_via_normal": 1,
+  "scg_successor_via_normal": 0,
   "expected": 0,
-  "pass": false,
-  "classes": 3,
-  "edges": 2
+  "pass": true,
+  "classes": 2,
+  "edges": 1
  },
  "B_valid_conflict": {
   "normal_successors": 1,
@@ -29,7 +29,7 @@
   "normal_observables": 10
  },
  "industrial_scg": {
-  "classes": 50001,
-  "edges": 57072
+  "classes": 160,
+  "edges": 245
  }
 }

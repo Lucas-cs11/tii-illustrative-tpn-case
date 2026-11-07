@@ -23,8 +23,8 @@
   "partial_completion_reachable": true
  },
  "A_scg": {
-  "classes": 3,
-  "edges": 2
+  "classes": 2,
+  "edges": 1
  },
  "B_scg": {
   "classes": 3,
