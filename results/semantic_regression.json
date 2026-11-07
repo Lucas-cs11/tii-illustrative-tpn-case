@@ -1,0 +1,33 @@
+{
+ "A_urgent_conflict": {
+  "normal_without_fault_feasible": false,
+  "forced_fault": true
+ },
+ "B_valid_conflict": {
+  "normal_feasible": true,
+  "fault_feasible": true,
+  "normal_path": [
+   "('t_normal', Fraction(2, 1))"
+  ],
+  "fault_path": [
+   "('t_fault', Fraction(1, 1))"
+  ]
+ },
+ "C_F_case_model": {
+  "normal_completion_feasible": true,
+  "normal_steps": 20,
+  "normal_observables": 10,
+  "fault_completion_feasible": true,
+  "fault_steps": 22,
+  "rework_reachable": true,
+  "partial_completion_reachable": true
+ },
+ "A_scg": {
+  "classes": 3,
+  "edges": 2
+ },
+ "B_scg": {
+  "classes": 3,
+  "edges": 2
+ }
+}
