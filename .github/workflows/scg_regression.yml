@@ -22,4 +22,6 @@ jobs:
         run: python scripts/semantic_regression.py
       - uses: actions/upload-artifact@v4
         if: always()
-        with: { name: scg-regression-${{ github.run_id }}, path: results/ }
+        with:
+          name: scg-regression-${{ github.run_id }}
+          path: results/
