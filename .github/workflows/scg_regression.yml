@@ -1,19 +1,25 @@
-name: tpn-v2-scg-regression
-on: workflow_dispatch
+name: tpn-scg-regression
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
 permissions:
   contents: read
 jobs:
   regression:
     runs-on: ubuntu-latest
-    timeout-minutes: 200
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
-        with: { ref: scg-urgency-fix }
+        with: { ref: main }
       - uses: actions/setup-python@v5
         with: { python-version: "3.13" }
       - run: python -m pip install numpy==2.3.4 scipy==1.16.2
       - env: { OPENBLAS_NUM_THREADS: "1", OMP_NUM_THREADS: "1", MKL_NUM_THREADS: "1" }
         run: python scripts/scg_regression.py
+      - run: python -m unittest tests.test_scg_fire_project -v
+      - env: { OPENBLAS_NUM_THREADS: "1", OMP_NUM_THREADS: "1", MKL_NUM_THREADS: "1" }
+        run: python scripts/semantic_regression.py
       - uses: actions/upload-artifact@v4
         if: always()
         with: { name: scg-regression-${{ github.run_id }}, path: results/ }
